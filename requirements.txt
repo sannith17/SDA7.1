@@ -1,11 +1,9 @@
 streamlit
 opencv-python-headless
-numpy
-pandas
-scikit-learn
 tensorflow
-matplotlib
-plotly
+scikit-learn
 Pillow
-rasterio
-geopandas
+matplotlib
+seaborn
+joblib
+numpy
