@@ -2,8 +2,6 @@ import streamlit as st
 import cv2
 import numpy as np
 import plotly.express as px
-import matplotlib.pyplot as plt
-from datetime import datetime
 import pandas as pd
 from PIL import Image
 from io import BytesIO
@@ -22,7 +20,7 @@ def read_image(file):
         file.seek(0)  # Reset file pointer
         return cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
 
-# Helper function to convert NumPy array to download-ready image
+# Convert NumPy array to download-ready image bytes (cache to avoid recomputation)
 @st.cache_data
 def convert_to_image_bytes(img_array):
     img = Image.fromarray(img_array)
@@ -31,11 +29,10 @@ def convert_to_image_bytes(img_array):
     buffer.seek(0)
     return buffer
 
-# Session state to track page
+# Initialize page number in session state
 if 'page' not in st.session_state:
     st.session_state.page = 1
 
-# Page navigation buttons
 def nav_buttons():
     cols = st.columns([1,6,1])
     with cols[0]:
@@ -43,7 +40,7 @@ def nav_buttons():
             if st.button("⬅️ Back"):
                 st.session_state.page -= 1
     with cols[2]:
-        if st.session_state.page < 4:
+        if st.session_state.page < 3:
             if st.button("Next ➡️"):
                 st.session_state.page += 1
 
@@ -53,70 +50,82 @@ if st.session_state.page == 1:
     st.session_state.analysis_type = st.radio("Select analysis type:", ["Land-based", "Water-based"])
     nav_buttons()
 
-# Page 2: Upload images and input dates
+# Page 2: Upload images and input dates (both before and after on same page)
 elif st.session_state.page == 2:
     st.header("Step 2: Upload Images and Enter Dates")
+
     col1, col2 = st.columns(2)
     with col1:
-        st.session_state.before_img = st.file_uploader("Upload BEFORE image", type=['jpg', 'png', 'tif'], key="before")
-        st.session_state.before_date = st.date_input("Date of BEFORE image")
+        st.subheader("BEFORE Image & Date")
+        before_img = st.file_uploader("Upload BEFORE image", type=['jpg', 'png', 'tif'], key="before")
+        before_date = st.date_input("Date of BEFORE image", key="before_date")
+        # Store in session state
+        if before_img is not None:
+            st.session_state.before_img = before_img
+        if before_date is not None:
+            st.session_state.before_date = before_date
+
     with col2:
-        st.session_state.after_img = st.file_uploader("Upload AFTER image", type=['jpg', 'png', 'tif'], key="after")
-        st.session_state.after_date = st.date_input("Date of AFTER image")
+        st.subheader("AFTER Image & Date")
+        after_img = st.file_uploader("Upload AFTER image", type=['jpg', 'png', 'tif'], key="after")
+        after_date = st.date_input("Date of AFTER image", key="after_date")
+        # Store in session state
+        if after_img is not None:
+            st.session_state.after_img = after_img
+        if after_date is not None:
+            st.session_state.after_date = after_date
+
+    # Show preview thumbnails if available
+    if 'before_img' in st.session_state and st.session_state.before_img is not None:
+        st.image(st.session_state.before_img, caption="Before Image Preview", width=250)
+    if 'after_img' in st.session_state and st.session_state.after_img is not None:
+        st.image(st.session_state.after_img, caption="After Image Preview", width=250)
+
     nav_buttons()
 
-# Page 3: Georeferencing and Cropping
+# Page 3: Visualization and Calamity Analysis
 elif st.session_state.page == 3:
-    st.header("Step 3: Image Alignment and Cropping")
-    before_img = st.session_state.get("before_img")
-    after_img = st.session_state.get("after_img")
+    st.header("Step 3: Change Detection and Visualization")
 
-    if before_img and after_img:
-        before = read_image(before_img)
-        after = read_image(after_img)
+    # Check if both images and dates are uploaded
+    if ('before_img' in st.session_state and st.session_state.before_img is not None and
+        'after_img' in st.session_state and st.session_state.after_img is not None and
+        'before_date' in st.session_state and
+        'after_date' in st.session_state):
 
-        # Resize to same shape for simplicity
+        before = read_image(st.session_state.before_img)
+        after = read_image(st.session_state.after_img)
+
+        # Resize AFTER image to BEFORE image size for alignment
         after_resized = cv2.resize(after, (before.shape[1], before.shape[0]))
-        aligned_before = before
-        aligned_after = after_resized
 
-        st.image([aligned_before, aligned_after], caption=["Aligned BEFORE", "Aligned AFTER"], width=300)
-        st.session_state.before = aligned_before
-        st.session_state.after = aligned_after
-    else:
-        st.warning("Please upload both images.")
-    nav_buttons()
+        st.image([before, after_resized], caption=["Before Image (aligned)", "After Image (aligned)"], width=300)
 
-# Page 4: Visualization and Calamity Analysis
-elif st.session_state.page == 4:
-    st.header("Step 4: Change Detection and Visualization")
+        # Masks generation function
+        def generate_mask(image, lower, upper):
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            mask = cv2.inRange(hsv, np.array(lower), np.array(upper))
+            return mask // 255  # Normalize mask to 0 and 1
 
-    def generate_mask(image, lower, upper):
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv, np.array(lower), np.array(upper))
-        return mask // 255  # Normalize mask to 0 and 1
+        # Overlay creation
+        def create_overlay(before_mask, after_mask, pixel_area=0.0001):
+            diff = after_mask.astype(int) - before_mask.astype(int)
+            overlay = np.zeros((*diff.shape, 3), dtype=np.uint8)
+            overlay[:,:,0] = (diff == 1) * 255  # Red: Increase
+            overlay[:,:,1] = (diff == -1) * 255  # Green: Decrease
+            inc_area = np.sum(diff == 1) * pixel_area
+            dec_area = np.sum(diff == -1) * pixel_area
+            return overlay, inc_area, dec_area
 
-    def create_overlay(before_mask, after_mask, pixel_area=0.0001):
-        diff = after_mask.astype(int) - before_mask.astype(int)
-        overlay = np.zeros((*diff.shape, 3), dtype=np.uint8)
-        overlay[:,:,0] = (diff == 1) * 255  # Red: Increase
-        overlay[:,:,1] = (diff == -1) * 255  # Green: Decrease
-        inc_area = np.sum(diff == 1) * pixel_area
-        dec_area = np.sum(diff == -1) * pixel_area
-        return overlay, inc_area, dec_area
-
-    if 'before' in st.session_state and 'after' in st.session_state:
-        before = st.session_state.before
-        after = st.session_state.after
-
+        # Generate masks for land, water, vegetation based on HSV thresholds
         land_mask_b = generate_mask(before, [10, 0, 100], [25, 255, 255])
-        land_mask_a = generate_mask(after, [10, 0, 100], [25, 255, 255])
+        land_mask_a = generate_mask(after_resized, [10, 0, 100], [25, 255, 255])
 
         water_mask_b = generate_mask(before, [90, 50, 50], [140, 255, 255])
-        water_mask_a = generate_mask(after, [90, 50, 50], [140, 255, 255])
+        water_mask_a = generate_mask(after_resized, [90, 50, 50], [140, 255, 255])
 
         veg_mask_b = generate_mask(before, [35, 50, 50], [85, 255, 255])
-        veg_mask_a = generate_mask(after, [35, 50, 50], [85, 255, 255])
+        veg_mask_a = generate_mask(after_resized, [35, 50, 50], [85, 255, 255])
 
         st.subheader("Heat Maps of Changes")
         tab1, tab2, tab3 = st.tabs(["Water", "Vegetation", "Land"])
@@ -171,7 +180,8 @@ elif st.session_state.page == 4:
                 st.error("🔥 Possible Deforestation")
             else:
                 st.warning("Vegetation Decline Over Time")
+
     else:
-        st.warning("Please complete previous steps.")
+        st.warning("Please upload both BEFORE and AFTER images along with their dates on the previous page.")
 
     nav_buttons()
