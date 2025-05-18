@@ -20,6 +20,67 @@ def read_image(file):
         file.seek(0)  # Reset file pointer
         return cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
 
+# Initialize session state variables if not present
+if "before_img" not in st.session_state:
+    st.session_state.before_img = None
+if "after_img" not in st.session_state:
+    st.session_state.after_img = None
+if "before_date" not in st.session_state:
+    st.session_state.before_date = None
+if "after_date" not in st.session_state:
+    st.session_state.after_date = None
+if "page" not in st.session_state:
+    st.session_state.page = 2  # Start from your upload page
+
+st.header("Step 2: Upload Images and Enter Dates")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    before_file = st.file_uploader("Upload BEFORE image", type=['jpg', 'png', 'tif', 'jpeg', 'tiff'], key="before_uploader")
+    before_date = st.date_input("Date of BEFORE image", key="before_date_input")
+    # Save uploaded file and date in session_state only if file uploaded
+    if before_file is not None:
+        st.session_state.before_img = before_file
+    if before_date is not None:
+        st.session_state.before_date = before_date
+
+    # Show preview if before_img uploaded
+    if st.session_state.before_img is not None:
+        img = read_image(st.session_state.before_img)
+        if img is not None:
+            st.image(img, caption="BEFORE Image Preview", use_column_width=True)
+
+with col2:
+    after_file = st.file_uploader("Upload AFTER image", type=['jpg', 'png', 'tif', 'jpeg', 'tiff'], key="after_uploader")
+    after_date = st.date_input("Date of AFTER image", key="after_date_input")
+    # Save uploaded file and date in session_state only if file uploaded
+    if after_file is not None:
+        st.session_state.after_img = after_file
+    if after_date is not None:
+        st.session_state.after_date = after_date
+
+    # Show preview if after_img uploaded
+    if st.session_state.after_img is not None:
+        img = read_image(st.session_state.after_img)
+        if img is not None:
+            st.image(img, caption="AFTER Image Preview", use_column_width=True)
+
+# Show Next button only if both before and after images and dates are set
+if (st.session_state.before_img is not None and
+    st.session_state.after_img is not None and
+    st.session_state.before_date is not None and
+    st.session_state.after_date is not None):
+
+    if st.button("Next ➡️"):
+        st.session_state.page = 3
+        st.experimental_rerun()  # Reload app to move to next page
+
+else:
+    st.info("Please upload both BEFORE and AFTER images along with their dates to proceed.")
+
+
+
 # Convert NumPy array to download-ready image bytes (cache to avoid recomputation)
 @st.cache_data
 def convert_to_image_bytes(img_array):
