@@ -2,59 +2,120 @@ import streamlit as st
 import numpy as np
 import cv2
 import os
+from PIL import Image
+import io
+import base64
 from datetime import datetime
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.decomposition import PCA
-from tensorflow.keras.models import load_model
-from utils.image_utils import preprocess_image, calculate_ndwi, calculate_ndvi, compare_images, plot_comparison_heatmap
+from sklearn.metrics import accuracy_score
+import tensorflow as tf
+import matplotlib.pyplot as plt
+import seaborn as sns
+import joblib
 
-st.set_page_config(page_title="Satellite Water & Calamity Detector", layout="wide")
+# Load models (ensure these files exist)
+cnn_model = tf.keras.models.load_model("models/cnn_model.h5")
+rf_model = joblib.load("models/rf_model.pkl")
 
-# Load pretrained models
-cnn_model = load_model("models/cnn_model.h5")
-rf_model = RandomForestClassifier()
-rf_model.load("models/rf_model.pkl")  # Custom method or joblib.load
+st.set_page_config(page_title="Satellite Calamity Detector", layout="wide")
+PAGES = ["Upload Images", "Georeference", "Calamity Detection", "Final Visualization"]
 
-# Session states
-if 'before_image' not in st.session_state:
-    st.session_state.before_image = None
-    st.session_state.after_image = None
-    st.session_state.before_date = None
-    st.session_state.after_date = None
+if "current_page" not in st.session_state:
+    st.session_state.current_page = PAGES[0]
 
-# Sidebar Navigation
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["📤 Upload Images", "🧠 Analysis", "🌊 Water Detection", "🗺️ Georeferencing", "📊 Final Visualization"])
+def nav_buttons():
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if st.button("📤 Upload Images"):
+            st.session_state.current_page = PAGES[0]
+    with col2:
+        if st.button("📌 Georeference"):
+            st.session_state.current_page = PAGES[1]
+    with col3:
+        if st.button("🌊 Calamity Detection"):
+            st.session_state.current_page = PAGES[2]
+    with col4:
+        if st.button("📊 Final Visualization"):
+            st.session_state.current_page = PAGES[3]
 
-# Upload Page
-if page == "📤 Upload Images":
-    st.title("Upload Satellite Images")
-    before = st.file_uploader("Upload BEFORE image", type=['jpg', 'png', 'tif'])
-    after = st.file_uploader("Upload AFTER image", type=['jpg', 'png', 'tif'])
-    before_date = st.date_input("BEFORE Image Date")
-    after_date = st.date_input("AFTER Image Date")
+def preprocess_image(image):
+    img = image.resize((128, 128)).convert("RGB")
+    return np.array(img) / 255.0
 
-    if before and after:
-        st.session_state.before_image = preprocess_image(before)
-        st.session_state.after_image = preprocess_image(after)
+def calculate_ndwi(image):
+    green = image[:, :, 1].astype(float)
+    nir = image[:, :, 0].astype(float)
+    ndwi = (green - nir) / (green + nir + 1e-5)
+    return ndwi
+
+def calculate_ndvi(image):
+    nir = image[:, :, 0].astype(float)
+    red = image[:, :, 2].astype(float)
+    ndvi = (nir - red) / (nir + red + 1e-5)
+    return ndvi
+
+def upload_images():
+    st.subheader("📥 Upload BEFORE and AFTER Satellite Images")
+    before_img = st.file_uploader("Upload BEFORE Image", type=["jpg", "png", "jpeg"], key="before")
+    after_img = st.file_uploader("Upload AFTER Image", type=["jpg", "png", "jpeg"], key="after")
+
+    before_date = st.date_input("Date of BEFORE image")
+    after_date = st.date_input("Date of AFTER image")
+
+    if before_img and after_img:
+        st.image([before_img, after_img], caption=["BEFORE", "AFTER"], width=300)
+        st.success("Images successfully uploaded.")
+
+        st.session_state.before_image = Image.open(before_img)
+        st.session_state.after_image = Image.open(after_img)
         st.session_state.before_date = before_date
         st.session_state.after_date = after_date
-        st.success("Images and dates successfully uploaded.")
 
-# Analysis Page
-elif page == "🧠 Analysis":
-    st.title("Calamity Detection Analysis")
-    if st.session_state.before_image is not None and st.session_state.after_image is not None:
-        b_img, a_img = st.session_state.before_image, st.session_state.after_image
-        ndwi_b = calculate_ndwi(b_img)
-        ndwi_a = calculate_ndwi(a_img)
-        ndvi_b = calculate_ndvi(b_img)
-        ndvi_a = calculate_ndvi(a_img)
+def georeference_images():
+    st.subheader("🌍 Georeferencing Interface (Prototype)")
+    st.info("This is a placeholder. You can integrate raster geo-align libraries (e.g., `rasterio`, `gdal`) here.")
+    if "before_image" in st.session_state and "after_image" in st.session_state:
+        st.image(st.session_state.before_image, caption="Before Image", width=300)
+        st.image(st.session_state.after_image, caption="After Image", width=300)
+    else:
+        st.warning("Please upload images first.")
 
-        inc_w, dec_v = compare_images(ndwi_b, ndwi_a), compare_images(ndvi_b, ndvi_a)
+def calamity_detection():
+    st.subheader("🌊 Calamity Detection using NDWI, NDVI, CNN & Random Forest")
+    if "before_image" in st.session_state and "after_image" in st.session_state:
+        before = preprocess_image(st.session_state.before_image)
+        after = preprocess_image(st.session_state.after_image)
+
+        # NDWI/NDVI Changes
+        ndwi_before = calculate_ndwi(before)
+        ndwi_after = calculate_ndwi(after)
+        ndvi_before = calculate_ndvi(before)
+        ndvi_after = calculate_ndvi(after)
+
+        water_change = np.mean(ndwi_after - ndwi_before)
+        vegetation_change = np.mean(ndvi_after - ndvi_before)
+
         date_diff = (st.session_state.after_date - st.session_state.before_date).days
 
-        if inc_w > 0.1:
+        # CNN Prediction
+        cnn_pred_before = cnn_model.predict(np.expand_dims(before, axis=0))[0]
+        cnn_pred_after = cnn_model.predict(np.expand_dims(after, axis=0))[0]
+
+        # Random Forest Prediction
+        flat_before = before.flatten().reshape(1, -1)
+        flat_after = after.flatten().reshape(1, -1)
+        rf_pred_before = rf_model.predict(flat_before)[0]
+        rf_pred_after = rf_model.predict(flat_after)[0]
+
+        # Display model outputs
+        st.markdown(f"📌 **CNN Before Prediction:** {np.argmax(cnn_pred_before)} | After: {np.argmax(cnn_pred_after)}")
+        st.markdown(f"📌 **RF Before Prediction:** {rf_pred_before} | After: {rf_pred_after}")
+
+        st.markdown(f"🧮 **NDWI Increase:** `{water_change:.3f}`")
+        st.markdown(f"🧮 **NDVI Decrease:** `{vegetation_change:.3f}`")
+
+        # Decision Logic
+        if water_change > 0.1:
             if date_diff <= 10:
                 st.error("⚠️ Possible Flood Detected")
             elif date_diff <= 60:
@@ -62,49 +123,43 @@ elif page == "🧠 Analysis":
             else:
                 st.info("🌊 Urbanization or Long-Term Water Increase")
 
-        if dec_v > 0.1:
+        if vegetation_change < -0.1:
             if date_diff <= 30:
                 st.error("🔥 Possible Deforestation")
             else:
-                st.warning("Vegetation Decline Over Time")
+                st.warning("🍂 Vegetation Decline Over Time")
 
-        st.metric("Water Increase %", f"{inc_w*100:.2f}%")
-        st.metric("Vegetation Decrease %", f"{dec_v*100:.2f}%")
     else:
-        st.warning("Please upload both BEFORE and AFTER images along with their dates.")
+        st.warning("Please upload both BEFORE and AFTER images.")
 
-# Water Detection Page
-elif page == "🌊 Water Detection":
-    st.title("Water Body Detection using NDWI")
-    if st.session_state.after_image is not None:
-        ndwi = calculate_ndwi(st.session_state.after_image)
-        st.image(ndwi, caption="NDWI - Water Detection", use_column_width=True, clamp=True)
+def final_visualization():
+    st.subheader("📊 Final Visualization: Comparison Heatmap")
+    if "before_image" in st.session_state and "after_image" in st.session_state:
+        before = preprocess_image(st.session_state.before_image)
+        after = preprocess_image(st.session_state.after_image)
+
+        diff = np.mean(after - before, axis=2)  # RGB diff mean
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.heatmap(diff, cmap='coolwarm', ax=ax, cbar=True)
+        ax.set_title("Heatmap: AFTER vs BEFORE Image Difference")
+        st.pyplot(fig)
     else:
-        st.warning("Upload AFTER image to detect water bodies.")
+        st.warning("Please upload both images for visualization.")
 
-# Georeferencing Page
-elif page == "🗺️ Georeferencing":
-    st.title("Georeferencing Support (Overlay Placeholder)")
-    st.markdown("You can extend this section using rasterio or folium for geospatial overlays with coordinates.")
+# Routing
+st.title("🛰️ Satellite Data Calamity Detection Dashboard")
+st.sidebar.title("Navigation")
+selected = st.sidebar.radio("Go to", PAGES, index=PAGES.index(st.session_state.current_page))
+st.session_state.current_page = selected
 
-# Final Visualization Page
-elif page == "📊 Final Visualization":
-    st.title("Final Visualization and Comparison")
-    if st.session_state.before_image is not None and st.session_state.after_image is not None:
-        b_img, a_img = st.session_state.before_image, st.session_state.after_image
+# Main Page Dispatcher
+if selected == "Upload Images":
+    upload_images()
+elif selected == "Georeference":
+    georeference_images()
+elif selected == "Calamity Detection":
+    calamity_detection()
+elif selected == "Final Visualization":
+    final_visualization()
 
-        # PCA + CNN + RF
-        st.subheader("CNN & RF Classification")
-        flat_b = PCA(n_components=50).fit_transform(b_img.reshape(-1, 3))
-        cnn_pred = cnn_model.predict(a_img.reshape(1, *a_img.shape))[0]
-        rf_pred = rf_model.predict(flat_b)
-
-        st.write("CNN Result Sample:", np.round(cnn_pred[:5], 2))
-        st.write("RF Class Count:", np.unique(rf_pred, return_counts=True))
-
-        # Comparison Heatmap
-        st.subheader("Comparison Heatmap")
-        heatmap = plot_comparison_heatmap(b_img, a_img)
-        st.image(heatmap, caption="Change Heatmap (After vs Before)", use_column_width=True, clamp=True)
-    else:
-        st.warning("Upload both images to proceed.")
+nav_buttons()
