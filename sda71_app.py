@@ -5,9 +5,31 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 from datetime import datetime
 import pandas as pd
+from PIL import Image
+from io import BytesIO
 
 st.set_page_config(layout="wide")
 st.title("Satellite Data Analysis")
+
+# Helper function to read uploaded images (supports TIFF)
+def read_image(file):
+    if file is None:
+        return None
+    if file.name.lower().endswith(('.tif', '.tiff')):
+        image = Image.open(file).convert("RGB")
+        return cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    else:
+        file.seek(0)  # Reset file pointer
+        return cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
+
+# Helper function to convert NumPy array to download-ready image
+@st.cache_data
+def convert_to_image_bytes(img_array):
+    img = Image.fromarray(img_array)
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
 
 # Session state to track page
 if 'page' not in st.session_state:
@@ -46,9 +68,12 @@ elif st.session_state.page == 2:
 # Page 3: Georeferencing and Cropping
 elif st.session_state.page == 3:
     st.header("Step 3: Image Alignment and Cropping")
-    if st.session_state.get("before_img") and st.session_state.get("after_img"):
-        before = cv2.imdecode(np.frombuffer(st.session_state.before_img.read(), np.uint8), cv2.IMREAD_COLOR)
-        after = cv2.imdecode(np.frombuffer(st.session_state.after_img.read(), np.uint8), cv2.IMREAD_COLOR)
+    before_img = st.session_state.get("before_img")
+    after_img = st.session_state.get("after_img")
+
+    if before_img and after_img:
+        before = read_image(before_img)
+        after = read_image(after_img)
 
         # Resize to same shape for simplicity
         after_resized = cv2.resize(after, (before.shape[1], before.shape[0]))
@@ -84,7 +109,6 @@ elif st.session_state.page == 4:
         before = st.session_state.before
         after = st.session_state.after
 
-        # Detecting land, water, vegetation (simplified HSV ranges)
         land_mask_b = generate_mask(before, [10, 0, 100], [25, 255, 255])
         land_mask_a = generate_mask(after, [10, 0, 100], [25, 255, 255])
 
@@ -98,14 +122,19 @@ elif st.session_state.page == 4:
         tab1, tab2, tab3 = st.tabs(["Water", "Vegetation", "Land"])
 
         with tab1:
-            overlay, inc_w, dec_w = create_overlay(water_mask_b, water_mask_a)
-            st.image(overlay, caption="Water Change Map (Red=Increase, Green=Decrease)", channels="RGB")
+            overlay_w, inc_w, dec_w = create_overlay(water_mask_b, water_mask_a)
+            st.image(overlay_w, caption="Water Change Map (Red=Increase, Green=Decrease)", channels="RGB")
+            st.download_button("Download Water Overlay", data=convert_to_image_bytes(overlay_w), file_name="water_overlay.png", mime="image/png")
+
         with tab2:
-            overlay, inc_v, dec_v = create_overlay(veg_mask_b, veg_mask_a)
-            st.image(overlay, caption="Vegetation Change Map (Red=Increase, Green=Decrease)", channels="RGB")
+            overlay_v, inc_v, dec_v = create_overlay(veg_mask_b, veg_mask_a)
+            st.image(overlay_v, caption="Vegetation Change Map (Red=Increase, Green=Decrease)", channels="RGB")
+            st.download_button("Download Vegetation Overlay", data=convert_to_image_bytes(overlay_v), file_name="vegetation_overlay.png", mime="image/png")
+
         with tab3:
-            overlay, inc_l, dec_l = create_overlay(land_mask_b, land_mask_a)
-            st.image(overlay, caption="Land Change Map (Red=Increase, Green=Decrease)", channels="RGB")
+            overlay_l, inc_l, dec_l = create_overlay(land_mask_b, land_mask_a)
+            st.image(overlay_l, caption="Land Change Map (Red=Increase, Green=Decrease)", channels="RGB")
+            st.download_button("Download Land Overlay", data=convert_to_image_bytes(overlay_l), file_name="land_overlay.png", mime="image/png")
 
         st.subheader("Change Summary in Area (sq km)")
         data = pd.DataFrame({
@@ -123,10 +152,13 @@ elif st.session_state.page == 4:
         st.subheader("Change Comparison Table")
         st.dataframe(data.style.highlight_max(axis=0, color='lightgreen'))
 
+        csv = data.to_csv(index=False).encode('utf-8')
+        st.download_button("Download Summary CSV", data=csv, file_name="change_summary.csv", mime="text/csv")
+
         st.subheader("Calamity Analysis")
         date_diff = (st.session_state.after_date - st.session_state.before_date).days
 
-        if inc_w > 0.1:  # threshold
+        if inc_w > 0.1:
             if date_diff <= 10:
                 st.error("⚠️ Possible Flood Detected")
             elif date_diff <= 60:
