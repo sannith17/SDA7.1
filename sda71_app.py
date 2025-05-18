@@ -36,19 +36,19 @@ elif st.session_state.page == 2:
     st.header("Step 2: Upload Images and Enter Dates")
     col1, col2 = st.columns(2)
     with col1:
-        before_img = st.file_uploader("Upload BEFORE image", type=['jpg', 'png', 'tif'], key="before")
-        before_date = st.date_input("Date of BEFORE image")
+        st.session_state.before_img = st.file_uploader("Upload BEFORE image", type=['jpg', 'png', 'tif'], key="before")
+        st.session_state.before_date = st.date_input("Date of BEFORE image")
     with col2:
-        after_img = st.file_uploader("Upload AFTER image", type=['jpg', 'png', 'tif'], key="after")
-        after_date = st.date_input("Date of AFTER image")
+        st.session_state.after_img = st.file_uploader("Upload AFTER image", type=['jpg', 'png', 'tif'], key="after")
+        st.session_state.after_date = st.date_input("Date of AFTER image")
     nav_buttons()
 
 # Page 3: Georeferencing and Cropping
 elif st.session_state.page == 3:
     st.header("Step 3: Image Alignment and Cropping")
-    if before_img and after_img:
-        before = cv2.imdecode(np.frombuffer(before_img.read(), np.uint8), cv2.IMREAD_COLOR)
-        after = cv2.imdecode(np.frombuffer(after_img.read(), np.uint8), cv2.IMREAD_COLOR)
+    if st.session_state.get("before_img") and st.session_state.get("after_img"):
+        before = cv2.imdecode(np.frombuffer(st.session_state.before_img.read(), np.uint8), cv2.IMREAD_COLOR)
+        after = cv2.imdecode(np.frombuffer(st.session_state.after_img.read(), np.uint8), cv2.IMREAD_COLOR)
 
         # Resize to same shape for simplicity
         after_resized = cv2.resize(after, (before.shape[1], before.shape[0]))
@@ -124,7 +124,7 @@ elif st.session_state.page == 4:
         st.dataframe(data.style.highlight_max(axis=0, color='lightgreen'))
 
         st.subheader("Calamity Analysis")
-        date_diff = (after_date - before_date).days
+        date_diff = (st.session_state.after_date - st.session_state.before_date).days
 
         if inc_w > 0.1:  # threshold
             if date_diff <= 10:
