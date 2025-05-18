@@ -4,6 +4,7 @@ import numpy as np
 import plotly.express as px
 import matplotlib.pyplot as plt
 from datetime import datetime
+import pandas as pd
 
 st.set_page_config(layout="wide")
 st.title("Satellite Data Analysis")
@@ -107,10 +108,10 @@ elif st.session_state.page == 4:
             st.image(overlay, caption="Land Change Map (Red=Increase, Green=Decrease)", channels="RGB")
 
         st.subheader("Change Summary in Area (sq km)")
-        data = {
+        data = pd.DataFrame({
             "Category": ["Water Increase", "Water Decrease", "Vegetation Increase", "Vegetation Decrease", "Land Increase", "Land Decrease"],
             "Area (sq km)": [inc_w, dec_w, inc_v, dec_v, inc_l, dec_l]
-        }
+        })
 
         fig = px.bar(data, x="Category", y="Area (sq km)", color="Category", title="Change in Area")
         st.plotly_chart(fig)
@@ -118,6 +119,9 @@ elif st.session_state.page == 4:
         pie_fig = px.pie(data, values="Area (sq km)", names="Category", title="Percentage Change by Category",
                          color_discrete_sequence=px.colors.qualitative.Set3)
         st.plotly_chart(pie_fig)
+
+        st.subheader("Change Comparison Table")
+        st.dataframe(data.style.highlight_max(axis=0, color='lightgreen'))
 
         st.subheader("Calamity Analysis")
         date_diff = (after_date - before_date).days
