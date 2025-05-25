@@ -830,21 +830,6 @@ def page4():
         st.subheader("Original After Image")
         st.image(st.session_state.aligned_images["after"], caption="Aligned After Image", use_container_width=True) # Updated here
 
-    with col_classified_map:
-        st.subheader(f"Classified Map ({st.session_state.model_choice})")
-        if st.session_state.classification_after_raw is not None:
-            original_after_shape = st.session_state.aligned_images["after"].size[::-1] # PIL size is (width, height), we need (height, width)
-            classified_image = create_colored_classification_map(st.session_state.classification_after_raw, original_after_shape)
-            st.image(classified_image, caption=f"Classified Land Cover Map ({st.session_state.model_choice})", use_container_width=True) # Updated here
-            st.caption(
-                f"<span style='color: {rgb_to_hex(CLASS_COLORS[0])};'>&#9632; {CLASS_LABELS[0]}</span> | "
-                f"<span style='color: {rgb_to_hex(CLASS_COLORS[1])};'>&#9632; {CLASS_LABELS[1]}</span> | "
-                f"<span style='color: {rgb_to_hex(CLASS_COLORS[2])};'>&#9632; {CLASS_LABELS[2]}</span>",
-                unsafe_allow_html=True
-            )
-        else:
-            st.warning("Classification data not available. Please go back to upload images.")
-
     st.subheader("Individual Class Presence Maps")
 
     # Generate and display heatmaps for specific classes (now more accurately named "presence maps")
@@ -852,24 +837,6 @@ def page4():
     class_map = st.session_state.classification_after_raw # This is the per-pixel classification map
 
     col_veg, col_water, col_land = st.columns(3)
-
-    # Vegetation Presence Map (Green)
-    with col_veg:
-        veg_heatmap_img = create_class_heatmap(after_img_raw, class_map, 0, color=CLASS_COLORS[0], alpha=0.6) # Using constant color and increased alpha
-        st.image(veg_heatmap_img, caption=f"{CLASS_LABELS[0]} Presence (Green)", use_container_width=True) # Updated here
-        st.caption(f"Green areas indicate the presence of {CLASS_LABELS[0].lower()}.")
-
-    # Water Presence Map (Blue)
-    with col_water:
-        water_heatmap_img = create_class_heatmap(after_img_raw, class_map, 2, color=CLASS_COLORS[2], alpha=0.6) # Using constant color and increased alpha
-        st.image(water_heatmap_img, caption=f"{CLASS_LABELS[2]} Presence (Blue)", use_container_width=True) # Updated here
-        st.caption(f"Blue areas indicate the presence of {CLASS_LABELS[2].lower()} bodies.")
-
-    # Land Presence Map (Brown)
-    with col_land:
-        land_heatmap_img = create_class_heatmap(after_img_raw, class_map, 1, color=CLASS_COLORS[1], alpha=0.6) # Using constant color and increased alpha
-        st.image(land_heatmap_img, caption=f"{CLASS_LABELS[1]} Presence (Brown)", use_container_width=True) # Updated here
-        st.caption(f"Brown areas indicate the presence of {CLASS_LABELS[1].lower()}/developed areas.")
 
     st.markdown("---")
     # Navigation buttons
