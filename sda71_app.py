@@ -812,7 +812,13 @@ def page5():
         unsafe_allow_html=True
     )
 
-    
+    # Calculate change percentage for overall area (still useful)
+    try:
+        total_pixels = np.prod(st.session_state.change_mask.shape)
+        changed_pixels = np.sum(st.session_state.change_mask)
+        overall_change_percentage = changed_pixels / total_pixels
+    except:
+        overall_change_percentage = 0
 
     # Classification Table & Charts
     st.subheader(f"Land Classification using {st.session_state.model_choice}")
@@ -914,14 +920,6 @@ def page5():
         st.error("Analysis data not found. Please start from the beginning.")
         st.session_state.page = 1
         return
-
-    # Calculate change percentage for overall area (still useful)
-    try:
-        total_pixels = np.prod(st.session_state.change_mask.shape)
-        changed_pixels = np.sum(st.session_state.change_mask)
-        overall_change_percentage = changed_pixels / total_pixels
-    except:
-        overall_change_percentage = 0
 
     st.subheader("🚨 Calamity Detection")
     # Get classification data
