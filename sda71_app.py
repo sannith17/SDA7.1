@@ -553,6 +553,35 @@ def create_class_heatmap(original_img, class_map, target_class_index, color=(0, 
         st.error(f"Error creating class heatmap: {e}")
         return original_img # Return original if error
 
+# ... (rest of your existing functions like calculate_ndvi, align_images, etc.)
+
+def create_colored_classification_map(class_map, original_img_shape):
+    """
+    Creates a colored image where each class index has a specific color.
+    class_map: numpy array with values 0 (Vegetation), 1 (Land), 2 (Water)
+    original_img_shape: tuple (height, width) of the image to match resolution
+    """
+    # Define colors for each class (RGB)
+    colors = {
+        0: (0, 255, 0),   # Green for Vegetation
+        1: (139, 69, 19), # Brown for Land
+        2: (0, 0, 255)    # Blue for Water
+    }
+
+    h_orig, w_orig = original_img_shape
+
+    # Resize class_map to match original image dimensions using nearest neighbor
+    class_map_resized = cv2.resize(class_map.astype(np.uint8), (w_orig, h_orig), interpolation=cv2.INTER_NEAREST)
+
+    colored_map = np.zeros((h_orig, w_orig, 3), dtype=np.uint8)
+
+    for class_idx, color in colors.items():
+        colored_map[class_map_resized == class_idx] = color
+
+    return Image.fromarray(colored_map)
+
+# ... (rest of your existing page functions)
+
 # -------- Page Functions --------
 def page1():
     """Model selection page"""
@@ -754,7 +783,7 @@ def page4():
         return
 
     st.subheader(f"Overall Change Heatmap using {st.session_state.model_choice} Model")
-    
+
     # Generate and display overall change heatmap (similar to previous version, now colored by model for clarity)
     h, w = st.session_state.aligned_images["after"].size[1], st.session_state.aligned_images["after"].size[0] #PIL image size (width, height)
     aligned_after_resized = st.session_state.aligned_images["after"].resize((w, h))
@@ -776,15 +805,31 @@ def page4():
         alpha=0.5
     )
     st.image(
-        overall_heatmap_overlay, 
-        caption=f"Overall Change Heatmap ({st.session_state.model_choice} - {st.session_state.model_choice} highlights changes)", 
+        overall_heatmap_overlay,
+        caption=f"Overall Change Heatmap ({st.session_state.model_choice} - {st.session_state.model_choice} highlights changes)",
         use_column_width=True,
         channels="RGB"
     )
     st.caption(f"Darker {st.session_state.model_choice} areas indicate detected changes.")
 
-    st.subheader("Detailed Class Change Heatmaps")
-    
+    st.subheader("Current Land Cover Classification Map")
+    col_orig_after, col_classified_map = st.columns(2)
+
+    with col_orig_after:
+        st.subheader("Original After Image")
+        st.image(st.session_state.aligned_images["after"], caption="Aligned After Image", use_column_width=True)
+
+    with col_classified_map:
+        st.subheader(f"Classified Map ({st.session_state.model_choice})")
+        if st.session_state.classification_after_raw is not None:
+            original_after_shape = st.session_state.aligned_images["after"].size[::-1] # PIL size is (width, height), we need (height, width)
+            classified_image = create_colored_classification_map(st.session_state.classification_after_raw, original_after_shape)
+            st.image(classified_image, caption=f"Classified Map ({st.session_state.model_choice})", use_column_width=True)
+        else:
+            st.warning("Classification data not available. Please go back to upload images.")
+
+    st.subheader("Detailed Class Change Heatmaps") # This subheader already exists
+
     # Generate and display heatmaps for specific classes
     after_img_raw = st.session_state.aligned_images["after"]
     class_map = st.session_state.classification_after_raw # This is the per-pixel classification map
@@ -794,19 +839,19 @@ def page4():
     # Vegetation Change Heatmap (Green)
     with col_veg:
         veg_heatmap_img = create_class_heatmap(after_img_raw, class_map, 0, color=(0, 255, 0)) # Green for Vegetation
-        st.image(veg_heatmap_img, caption="Vegetation Change Heatmap (Green)", use_column_width=True)
+        st.image(veg_heatmap_img, caption="Vegetation Presence (Green)", use_column_width=True) # Changed caption for clarity
         st.caption("Green areas indicate presence of vegetation.")
 
     # Water Change Heatmap (Blue)
     with col_water:
         water_heatmap_img = create_class_heatmap(after_img_raw, class_map, 2, color=(0, 0, 255)) # Blue for Water
-        st.image(water_heatmap_img, caption="Water Change Heatmap (Blue)", use_column_width=True)
+        st.image(water_heatmap_img, caption="Water Presence (Blue)", use_column_width=True) # Changed caption for clarity
         st.caption("Blue areas indicate presence of water bodies.")
 
     # Land Change Heatmap (Brown/Orange)
     with col_land:
         land_heatmap_img = create_class_heatmap(after_img_raw, class_map, 1, color=(139, 69, 19)) # SaddleBrown for Land
-        st.image(land_heatmap_img, caption="Land Change Heatmap (Brown)", use_column_width=True)
+        st.image(land_heatmap_img, caption="Land Presence (Brown)", use_column_width=True) # Changed caption for clarity
         st.caption("Brown areas indicate presence of bare land/developed areas.")
 
     st.markdown("---")
@@ -816,9 +861,9 @@ def page4():
         if st.button("⬅️ Back", key="page4_back", help="Go back to Aligned Images Comparison"):
             st.session_state.page = 3
     with col2:
+        # Changed "Next" button target page to 5 as per your previous code structure
         if st.button("Next ➡️", key="page4_next", help="Proceed to Land Classification & Calamity Analysis"):
             st.session_state.page = 5
-
 def page5():
     """Land classification and analysis page"""
     st.markdown("<h2 style='color: white;'>5. Land Classification & Analysis</h2>", unsafe_allow_html=True)
