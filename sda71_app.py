@@ -812,6 +812,13 @@ def page5():
         unsafe_allow_html=True
     )
 
+    # Validate data
+    required_keys = ['classification', 'change_mask', 'before_date', 'after_date']
+    if not all(key in st.session_state for key in required_keys):
+        st.error("Analysis data not found. Please start from the beginning.")
+        st.session_state.page = 1
+        return
+
     # Calculate change percentage for overall area (still useful)
     try:
         total_pixels = np.prod(st.session_state.change_mask.shape)
@@ -819,6 +826,42 @@ def page5():
         overall_change_percentage = changed_pixels / total_pixels
     except:
         overall_change_percentage = 0
+
+    st.subheader("🚨 Calamity Detection")
+    # Get classification data
+    classification_data = st.session_state.classification # After image classification
+    if classification_data is None:
+        classification_data = {"Vegetation": 0, "Land": 0, "Water": 0}
+
+    # Get before classification data (dummy for now)
+    before_class_data = st.session_state.classification_before_svm if st.session_state.model_choice == "SVM" else st.session_state.classification_before_cnn
+    
+    calamity_report = detect_calamity(
+        st.session_state.before_date,
+        st.session_state.after_date,
+        before_class_data, # Pass before classification
+        classification_data # Pass after classification
+    )
+    
+    # Display calamity report with appropriate color
+    if "⚠️" in calamity_report or "🔥" in calamity_report or "💧" in calamity_report or "🏜️" in calamity_report or "🪵" in calamity_report or "🏭" in calamity_report:
+        color = "red"
+    elif "🌱" in calamity_report or "✅" in calamity_report:
+        color = "lightgreen"
+    elif "🏗️" in calamity_report or "🌊" in calamity_report or "🏙️" in calamity_report or "📈" in calamity_report or "📉" in calamity_report or "🌴" in calamity_report:
+        color = "orange"
+    else:
+        color = "gray"
+    
+    st.markdown(f"<h3 style='color: {color};'>{calamity_report}</h3>", unsafe_allow_html=True)
+    
+    st.markdown(f"""
+        <p style='font-size: 16px; color: lightgray;'>
+            <b>Overall Area Change Detected:</b> {overall_change_percentage:.2%} of the image area<br>
+            <b>Time Period:</b> {(st.session_state.after_date - st.session_state.before_date).days} days between images.
+        </p>
+    """, unsafe_allow_html=True)
+    st.markdown("---")
 
     # Classification Table & Charts
     st.subheader(f"Land Classification using {st.session_state.model_choice}")
@@ -914,49 +957,6 @@ def page5():
         st.pyplot(fig)
         plt.close(fig)
 
-    # Validate data
-    required_keys = ['classification', 'change_mask', 'before_date', 'after_date']
-    if not all(key in st.session_state for key in required_keys):
-        st.error("Analysis data not found. Please start from the beginning.")
-        st.session_state.page = 1
-        return
-
-    st.subheader("🚨 Calamity Detection")
-    # Get classification data
-    classification_data = st.session_state.classification # After image classification
-    if classification_data is None:
-        classification_data = {"Vegetation": 0, "Land": 0, "Water": 0}
-
-    # Get before classification data (dummy for now)
-    before_class_data = st.session_state.classification_before_svm if st.session_state.model_choice == "SVM" else st.session_state.classification_before_cnn
-    
-    calamity_report = detect_calamity(
-        st.session_state.before_date,
-        st.session_state.after_date,
-        before_class_data, # Pass before classification
-        classification_data # Pass after classification
-    )
-    
-    # Display calamity report with appropriate color
-    if "⚠️" in calamity_report or "🔥" in calamity_report or "💧" in calamity_report or "🏜️" in calamity_report or "🪵" in calamity_report or "🏭" in calamity_report:
-        color = "red"
-    elif "🌱" in calamity_report or "✅" in calamity_report:
-        color = "lightgreen"
-    elif "🏗️" in calamity_report or "🌊" in calamity_report or "🏙️" in calamity_report or "📈" in calamity_report or "📉" in calamity_report or "🌴" in calamity_report:
-        color = "orange"
-    else:
-        color = "gray"
-    
-    st.markdown(f"<h3 style='color: {color};'>{calamity_report}</h3>", unsafe_allow_html=True)
-    
-    st.markdown(f"""
-        <p style='font-size: 16px; color: lightgray;'>
-            <b>Overall Area Change Detected:</b> {overall_change_percentage:.2%} of the image area<br>
-            <b>Time Period:</b> {(st.session_state.after_date - st.session_state.before_date).days} days between images.
-        </p>
-    """, unsafe_allow_html=True)
-    st.markdown("---")
-
     st.markdown("---")
     # Navigation buttons
     col1, col2 = st.columns([1, 1])
@@ -966,6 +966,7 @@ def page5():
     with col2:
         if st.button("Next ➡️", key="page5_next", help="Proceed to Feature Correlation & Model Evaluation"):
             st.session_state.page = 6
+
 
 def page6():
     """Feature correlation analysis and model evaluation page"""
